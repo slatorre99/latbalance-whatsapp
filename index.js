@@ -7,6 +7,7 @@ import makeWASocket, {
 import { Boom } from '@hapi/boom';
 import express from 'express';
 import qrcode from 'qrcode-terminal';
+import QRCode from 'qrcode';
 import pino from 'pino';
 import { existsSync, mkdirSync } from 'fs';
 
@@ -22,6 +23,7 @@ const PORT = process.env.PORT ?? 3001;
 
 let sock = null;
 let connectionStatus = 'disconnected'; // 'connecting' | 'open' | 'disconnected'
+let lastQR = null;
 
 // ─── Baileys connection ───────────────────────────────────────────────────────
 
@@ -44,7 +46,8 @@ async function connectToWhatsApp() {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log('\n📱 Escanea este QR con WhatsApp (Vincular dispositivo):\n');
+      lastQR = qr;
+      console.log('\n📱 Escanea este QR en: ' + (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : 'http://localhost:' + PORT) + '/qr\n');
       qrcode.generate(qr, { small: true });
       connectionStatus = 'connecting';
     }
@@ -96,6 +99,23 @@ function authMiddleware(req, res, next) {
 
 app.get('/status', (req, res) => {
   res.json({ status: connectionStatus });
+});
+
+app.get('/qr', async (req, res) => {
+  if (connectionStatus === 'open') {
+    return res.send('<html><body style="background:#111;color:#0f0;font-family:sans-serif;text-align:center;padding:60px"><h2>✅ WhatsApp ya está conectado</h2></body></html>');
+  }
+  if (!lastQR) {
+    return res.send('<html><body style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding:60px"><h2>⏳ Esperando QR... recarga en unos segundos</h2><script>setTimeout(()=>location.reload(),3000)</script></body></html>');
+  }
+  const imgData = await QRCode.toDataURL(lastQR, { width: 400, margin: 2 });
+  res.send(`<html><body style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding:40px">
+    <h2>📱 Escanea con WhatsApp</h2>
+    <p style="color:#aaa">WhatsApp → Dispositivos vinculados → Vincular dispositivo</p>
+    <img src="${imgData}" style="border-radius:12px;margin:20px auto;display:block"/>
+    <p style="color:#555;font-size:12px">El QR expira cada ~20 segundos. Si no funciona, recarga la página.</p>
+    <script>setTimeout(()=>location.reload(),18000)</script>
+  </body></html>`);
 });
 
 app.post('/send', authMiddleware, async (req, res) => {
