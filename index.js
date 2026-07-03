@@ -9,7 +9,8 @@ import express from 'express';
 import qrcode from 'qrcode-terminal';
 import QRCode from 'qrcode';
 import pino from 'pino';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { execSync } from 'child_process';
 
 const logger = pino({ level: 'silent' });
 const app = express();
@@ -17,6 +18,17 @@ app.use(express.json());
 
 const AUTH_DIR = './auth_info';
 if (!existsSync(AUTH_DIR)) mkdirSync(AUTH_DIR);
+
+// Restaurar sesión desde variable de entorno si existe y auth_info está vacío
+if (process.env.AUTH_INFO_B64 && !existsSync(`${AUTH_DIR}/creds.json`)) {
+  try {
+    writeFileSync('./auth_info.tar.gz', Buffer.from(process.env.AUTH_INFO_B64, 'base64'));
+    execSync('tar -xzf auth_info.tar.gz');
+    console.log('✅ Sesión restaurada desde AUTH_INFO_B64');
+  } catch (e) {
+    console.error('Error restaurando sesión:', e.message);
+  }
+}
 
 const API_KEY = process.env.API_KEY ?? 'latbalance-secret';
 const PORT = process.env.PORT ?? 3001;
